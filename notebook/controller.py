@@ -124,9 +124,11 @@ class Controller(object):
         q = J.T.dot(-2.0 * e)
         A, b = (None, None)
         G, h = self.stack(inequality_tasks) if inequality_tasks else (None, None)
+        lb = numpy.maximum(-0.1, self.mins - self.joint_msg.position)
+        ub = numpy.minimum(0.1, self.maxs - self.joint_msg.position)
         self.nullspace = numpy.zeros((self.N, 0))
         try:
-            result = 1e-1 * qpsolvers.solve_qp(P, q, G, h, A, b)
+            result = qpsolvers.solve_qp(P, q, G, h, A, b, lb, ub)
             if result is None:
                 print("Failed to find a solution")
         except ValueError as e:
