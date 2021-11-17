@@ -118,14 +118,15 @@ class Controller(object):
     def solve_qp(self, equality_tasks, inequality_tasks):
         """Solve tasks of the form J dq = e  and  J dq ≤ e
            using quadratic optimization: https://pypi.org/project/qpsolvers"""
-        # combine all equality/inequality tasks into single matrices
-        P = numpy.identity(self.N)  # minimize joint velocity
-        q = numpy.zeros(self.N)
-        A, b = self.stack(equality_tasks) if equality_tasks else (None, None)
+        # Formulate all equality tasks as a quadratic optimization problem min |J dq -e |^2 + lambda + |dq|^2
+        J, e = self.stack(equality_tasks) if equality_tasks else (numpy.identity(self.N), numpy.zeros(self.N))
+        P = 2 * J.T.dot(J) + 1e-3 * numpy.identity(self.N)
+        q = J.T.dot(-2.0 * e)
+        A, b = (None, None)
         G, h = self.stack(inequality_tasks) if inequality_tasks else (None, None)
         self.nullspace = numpy.zeros((self.N, 0))
         try:
-            result = qpsolvers.solve_qp(P, q, G, h, A, b)
+            result = 1e-1 * qpsolvers.solve_qp(P, q, G, h, A, b)
             if result is None:
                 print("Failed to find a solution")
         except ValueError as e:
