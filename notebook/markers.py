@@ -150,3 +150,26 @@ def iPlaneMarker(pos, markers, name='plane'):
         addArrowControls(im, dirs='z')
         addOrientationControls(im, dirs='xy')
     return im
+
+
+def iConeMarker(pose, half_angle, scale, name='cone', delta=0):
+    deltaT = tf.rotation_matrix(-delta, [1, 0, 0])  # transform from new marker pose to cone pose
+    pose = pose.dot(deltaT.T)  # apply inverse delta transform to yield new marker pose
+    im = InteractiveMarker(name=name, scale=2*scale, pose=createPose(pose))
+    im.header.frame_id = "world"
+    add3DControls(im, [cone(half_angle+1e-4, scale, color=ColorRGBA(1, .2, 1, .3), pose=createPose(deltaT))],
+                  mode=InteractiveMarkerControl.ROTATE_3D, name='pose', always_visible=True)
+
+    # cylinder as cone axis
+    # cyl_pose = deltaT.dot(tf.translation_matrix([0, 0, 0.5*scale]))
+    # add3DControls(im, [cylinder(radius=0.05, color=ColorRGBA(0, 0, 1, 1), pose=createPose(cyl_pose))],
+    #               mode=InteractiveMarkerControl.NONE, name='cyl', always_visible=True)
+
+    # ball as handle to change opening angle of cone
+    handle_pose = tf.rotation_matrix(half_angle, [1, 0, 0]).dot(tf.translation_matrix([0, 0, scale]))
+    handle = sphere(radius=0.1*scale, pose=createPose(deltaT.dot(handle_pose)), color=ColorRGBA(0, 1, 1, 1))
+    add3DControls(im, [handle], mode=InteractiveMarkerControl.ROTATE_AXIS, name='angle')
+
+    # ring marker to change opening angle of cone
+    # add3DControls(im, [], mode=InteractiveMarkerControl.ROTATE_AXIS, name='angle')
+    return im

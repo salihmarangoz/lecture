@@ -1,6 +1,7 @@
 #!/usr/bin/python
 
 import numpy
+import math
 import rospy
 import random
 from std_msgs.msg import Header, ColorRGBA
@@ -10,7 +11,7 @@ from visualization_msgs.msg import Marker, MarkerArray
 from tf import transformations as tf
 from interactive_markers.interactive_marker_server import InteractiveMarkerServer, InteractiveMarkerFeedback
 from robot_model import RobotModel, Joint
-from markers import createPose, iPoseMarker, frame
+from markers import createPose, iPoseMarker, frame, iConeMarker
 
 
 def skew(w):
@@ -64,6 +65,44 @@ class Controller(object):
         T = tf.quaternion_matrix(numpy.array([q.x, q.y, q.z, q.w]))
         T[0:3, 3] = numpy.array([p.x, p.y, p.z])
         self.targets[feedback.marker_name] = T
+
+    def addConeMarker(self, pose, name='cone'):
+        self.process_cone_feedback(
+            InteractiveMarkerFeedback(marker_name=name, pose=createPose(pose)))
+
+    def process_cone_feedback(self, feedback):
+        if feedback.control_name == 'angle':
+            # Adapting the cone angle is a little bit tricky:
+            # The ball handle changes the cone's orientation by rotation about x
+            # The feedback.pose reported is the pose of the whole marker,
+            # i.e. the cone frame is reported. To find the actual angle, we need
+            # to compare with the previous angle (stored in self.angle)
+            # TODO: Use two interactive markers: one for the cone (controlling its pose)
+            # and one for the ball handle (controlling its position). This requires to
+            # link both markers, i.e. update the other if one changes.
+            T = self.targets[feedback.marker_name + '_pose']
+            q = feedback.pose.orientation
+            deltaT = numpy.eye(4)
+            deltaT[:3, :3] = T[:3, :3].T.dot(tf.quaternion_matrix([q.x, q.y, q.z, q.w])[:3, :3])
+            angle = numpy.clip(self.angle + tf.euler_from_matrix(deltaT)[0], 0, math.pi/2)
+            self.targets[feedback.marker_name + '_angle'] = angle
+            print(feedback)
+        elif feedback.control_name == 'pose':
+            T = self.targets[feedback.marker_name + '_pose']
+            q = feedback.pose.orientation
+            T[:3, :3] = tf.quaternion_matrix(numpy.array([q.x, q.y, q.z, q.w]))[:3, :3]
+            self.targets[feedback.marker_name + '_pose'] = T
+            angle = self.targets[feedback.marker_name + '_angle']
+        else:  # init
+            p = feedback.pose.position
+            q = feedback.pose.orientation
+            T = tf.translation_matrix([p.x, p.y, p.z]).dot(tf.quaternion_matrix([q.x, q.y, q.z, q.w]))
+            self.targets[feedback.marker_name + '_pose'] = T
+            self.targets[feedback.marker_name + '_angle'] = angle = self.angle = math.pi/6
+
+        self.im_server.insert(iConeMarker(T, angle, 0.2, delta=angle-self.angle),
+                              self.process_cone_feedback)
+        self.im_server.applyChanges()
 
     def reset(self):
         self.joint_msg.position = numpy.asarray(
