@@ -5,6 +5,7 @@ Panels:
     Property Tree Widget:
       Expanded:
         - /Marker1
+        - /Marker1/Status1
         - /InteractiveMarkers1
       Splitter Ratio: 0.566107988357544
     Tree Height: 770

@@ -1,6 +1,5 @@
 from __future__ import print_function
 
-from copy import deepcopy
 from visualization_msgs.msg import Marker, InteractiveMarker, InteractiveMarkerControl
 from std_msgs.msg import Header, ColorRGBA
 from geometry_msgs.msg import Pose, Point, Quaternion, Vector3
@@ -29,42 +28,57 @@ def plane(size=1.0, color=ColorRGBA(1, 1, 1, 0.5), **kwargs):
     """Create a plane (a flat box)"""
     return box(size=Vector3(size, size, 1e-3), color=color, **kwargs)
 
+def cone(halfOpenAngle, scale=.1, **kwargs):
+    twopi = numpy.pi * 2
+    height = scale * numpy.cos(halfOpenAngle)
+    radius = scale * numpy.sin(halfOpenAngle)
+    points = []
+    numTriangles = 50
+    for i in range(numTriangles):
+        points.append(Vector3(0, 0, 0))
+        theta = twopi * i/numTriangles
+        points.append(Vector3(radius * numpy.sin(theta), radius * numpy.cos(theta), height))
+        theta = twopi * (i+1)/numTriangles
+        points.append(Vector3(radius * numpy.sin(theta), radius * numpy.cos(theta), height))
 
-def frame(T, scale=0.1, frame_id='world'):
+    return Marker(type=Marker.TRIANGLE_LIST, points=points, **kwargs)
+
+
+def frame(T, scale=0.1, radius=None, frame_id='world', ns='frame'):
     """Create a frame composed from three cylinders"""
     markers = []
     p = T[0:3, 3]
 
-    defaults = dict(header=Header(frame_id=frame_id), ns='frame')
+    defaults = dict(header=Header(frame_id=frame_id), ns=ns)
+    if radius is None:
+        radius = scale / 10
 
     xaxis = tf.quaternion_about_axis(numpy.pi / 2., [0, 1, 0])
     yaxis = tf.quaternion_about_axis(numpy.pi / 2., [-1, 0, 0])
     offset = numpy.array([0, 0, scale / 2.])
 
-    m = cylinder(scale / 10., scale, color=ColorRGBA(1, 0, 0, 1), id=0, **defaults)
+    m = cylinder(radius, scale, color=ColorRGBA(1, 0, 0, 1), id=0, **defaults)
     q = tf.quaternion_multiply(tf.quaternion_from_matrix(T), xaxis)
     m.pose.orientation = Quaternion(*q)
     m.pose.position = Point(*(p + tf.quaternion_matrix(q)[:3, :3].dot(offset)))
     markers.append(m)
 
-    m = cylinder(scale / 10., scale, color=ColorRGBA(0, 1, 0, 1), id=1, **defaults)
+    m = cylinder(radius, scale, color=ColorRGBA(0, 1, 0, 1), id=1, **defaults)
     q = tf.quaternion_multiply(tf.quaternion_from_matrix(T), yaxis)
     m.pose.orientation = Quaternion(*q)
     m.pose.position = Point(*(p + tf.quaternion_matrix(q)[:3, :3].dot(offset)))
     markers.append(m)
 
-    m = cylinder(scale / 10., scale, color=ColorRGBA(0, 0, 1, 1), id=2, **defaults)
+    m = cylinder(radius, scale, color=ColorRGBA(0, 0, 1, 1), id=2, **defaults)
     m.pose.orientation = Quaternion(*tf.quaternion_from_matrix(T))
     m.pose.position = Point(*(p + T[:3, :3].dot(offset)))
     markers.append(m)
     return markers
 
 
-def add3DControls(im, markers, mode=InteractiveMarkerControl.MOVE_ROTATE_3D):
+def add3DControls(im, markers, mode=InteractiveMarkerControl.MOVE_ROTATE_3D, **kwargs):
     # Create a control to move a (sphere) marker around with the mouse
-    control = InteractiveMarkerControl()
-    control.interaction_mode = mode
-    control.markers.extend(markers)
+    control = InteractiveMarkerControl(interaction_mode=mode, markers=markers, **kwargs)
     im.controls.append(control)
 
 
@@ -135,3 +149,29 @@ def iPlaneMarker(pos, markers, name='plane'):
         addArrowControls(im, dirs='z')
         addOrientationControls(im, dirs='xy')
     return im
+<<<<<<< HEAD
+=======
+
+
+def iConeMarker(pose, half_angle, scale, name='cone', delta=0):
+    deltaT = tf.rotation_matrix(-delta, [1, 0, 0])  # transform from new marker pose to cone pose
+    pose = pose.dot(deltaT.T)  # apply inverse delta transform to yield new marker pose
+    im = InteractiveMarker(name=name, scale=2*scale, pose=createPose(pose))
+    im.header.frame_id = "world"
+    add3DControls(im, [cone(half_angle+1e-4, scale, color=ColorRGBA(1, .2, 1, .3), pose=createPose(deltaT))],
+                  mode=InteractiveMarkerControl.ROTATE_3D, name='pose', always_visible=True)
+
+    # cylinder as cone axis
+    # cyl_pose = deltaT.dot(tf.translation_matrix([0, 0, 0.5*scale]))
+    # add3DControls(im, [cylinder(radius=0.05, color=ColorRGBA(0, 0, 1, 1), pose=createPose(cyl_pose))],
+    #               mode=InteractiveMarkerControl.NONE, name='cyl', always_visible=True)
+
+    # ball as handle to change opening angle of cone
+    handle_pose = tf.rotation_matrix(half_angle, [1, 0, 0]).dot(tf.translation_matrix([0, 0, scale]))
+    handle = sphere(radius=0.1*scale, pose=createPose(deltaT.dot(handle_pose)), color=ColorRGBA(0, 1, 1, 1))
+    add3DControls(im, [handle], mode=InteractiveMarkerControl.ROTATE_AXIS, name='angle')
+
+    # ring marker to change opening angle of cone
+    # add3DControls(im, [], mode=InteractiveMarkerControl.ROTATE_AXIS, name='angle')
+    return im
+>>>>>>> 8912f0347af77a324bec96ed71e7f532d8628146

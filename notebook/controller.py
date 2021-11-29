@@ -1,16 +1,17 @@
 #!/usr/bin/python
 
 import numpy
+import math
 import rospy
 import random
 from std_msgs.msg import Header, ColorRGBA
 from sensor_msgs.msg import JointState
 from geometry_msgs.msg import TransformStamped, Transform, Pose, Quaternion, Vector3, Point
-from visualization_msgs.msg import Marker
+from visualization_msgs.msg import Marker, MarkerArray
 from tf import transformations as tf
 from interactive_markers.interactive_marker_server import InteractiveMarkerServer, InteractiveMarkerFeedback
 from robot_model import RobotModel, Joint
-from markers import iPoseMarker
+from markers import createPose, iPoseMarker, frame, iConeMarker
 
 
 def skew(w):
@@ -44,11 +45,11 @@ class Controller(object):
         self.prismatic = numpy.array([j.jtype == j.prismatic for j in self.robot.active_joints])
 
         # prepare publishing eef trace
-        self.trace_msg = Marker(type=Marker.LINE_STRIP, header=Header(frame_id='world'), ns='trace',
-                                color=ColorRGBA(0, 1, 1, 0.5))
-        self.trace_msg.pose.orientation.w = 1
-        self.trace_msg.scale.x = 0.01  # line width
-        self.trace_pub = rospy.Publisher('/marker', Marker, queue_size=10)
+        self.trace_marker = Marker(type=Marker.LINE_STRIP, header=Header(frame_id='world'),
+                                ns='trace', color=ColorRGBA(0, 1, 1, 0.5))
+        self.trace_marker.pose.orientation.w = 1
+        self.trace_marker.scale.x = 0.01  # line width
+        self.marker_pub = rospy.Publisher('/marker_array', MarkerArray, queue_size=10)
 
         self.targets = dict()
         self.im_server = InteractiveMarkerServer('controller')
@@ -65,6 +66,44 @@ class Controller(object):
         T[0:3, 3] = numpy.array([p.x, p.y, p.z])
         self.targets[feedback.marker_name] = T
 
+    def addConeMarker(self, pose, name='cone'):
+        self.process_cone_feedback(
+            InteractiveMarkerFeedback(marker_name=name, pose=createPose(pose)))
+
+    def process_cone_feedback(self, feedback):
+        if feedback.control_name == 'angle':
+            # Adapting the cone angle is a little bit tricky:
+            # The ball handle changes the cone's orientation by rotation about x
+            # The feedback.pose reported is the pose of the whole marker,
+            # i.e. the cone frame is reported. To find the actual angle, we need
+            # to compare with the previous angle (stored in self.angle)
+            # TODO: Use two interactive markers: one for the cone (controlling its pose)
+            # and one for the ball handle (controlling its position). This requires to
+            # link both markers, i.e. update the other if one changes.
+            T = self.targets[feedback.marker_name + '_pose']
+            q = feedback.pose.orientation
+            deltaT = numpy.eye(4)
+            deltaT[:3, :3] = T[:3, :3].T.dot(tf.quaternion_matrix([q.x, q.y, q.z, q.w])[:3, :3])
+            angle = numpy.clip(self.angle + tf.euler_from_matrix(deltaT)[0], 0, math.pi/2)
+            self.targets[feedback.marker_name + '_angle'] = angle
+            print(feedback)
+        elif feedback.control_name == 'pose':
+            T = self.targets[feedback.marker_name + '_pose']
+            q = feedback.pose.orientation
+            T[:3, :3] = tf.quaternion_matrix(numpy.array([q.x, q.y, q.z, q.w]))[:3, :3]
+            self.targets[feedback.marker_name + '_pose'] = T
+            angle = self.targets[feedback.marker_name + '_angle']
+        else:  # init
+            p = feedback.pose.position
+            q = feedback.pose.orientation
+            T = tf.translation_matrix([p.x, p.y, p.z]).dot(tf.quaternion_matrix([q.x, q.y, q.z, q.w]))
+            self.targets[feedback.marker_name + '_pose'] = T
+            self.targets[feedback.marker_name + '_angle'] = angle = self.angle = math.pi/6
+
+        self.im_server.insert(iConeMarker(T, angle, 0.2, delta=angle-self.angle),
+                              self.process_cone_feedback)
+        self.im_server.applyChanges()
+
     def reset(self):
         self.joint_msg.position = numpy.asarray(
             [(j.min+j.max)/2 + 0.1*(j.max-j.min)*random.uniform(0, 1) for j in self.robot.active_joints])
@@ -77,11 +116,14 @@ class Controller(object):
         self.joint_pub.publish(self.joint_msg)
         self.T, self.J = self.robot.fk(self.target_link, dict(zip(self.joint_msg.name, self.joint_msg.position)))
 
-        trace = self.trace_msg.points
+        # publish eef marker
+        msg = MarkerArray(markers=frame(self.T, scale=0.05, ns='eef frame'))
+        trace = self.trace_marker.points
         trace.append(Point(*self.T[0:3, 3]))
         if (len(trace) > 1000):
             del trace[0]
-        self.trace_pub.publish(self.trace_msg)
+        msg.markers.append(self.trace_marker)
+        self.marker_pub.publish(msg)
 
     def solve(self, tasks):
         """Hierarchically solve tasks of the form J dq = e"""
