@@ -149,8 +149,6 @@ def iPlaneMarker(pos, markers, name='plane'):
         addArrowControls(im, dirs='z')
         addOrientationControls(im, dirs='xy')
     return im
-<<<<<<< HEAD
-=======
 
 
 def iConeMarker(pose, half_angle, scale, name='cone', delta=0):
@@ -174,4 +172,3 @@ def iConeMarker(pose, half_angle, scale, name='cone', delta=0):
     # ring marker to change opening angle of cone
     # add3DControls(im, [], mode=InteractiveMarkerControl.ROTATE_AXIS, name='angle')
     return im
->>>>>>> 8912f0347af77a324bec96ed71e7f532d8628146
