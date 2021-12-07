@@ -7,7 +7,8 @@ import rospy
 from argparse import ArgumentParser
 from controller import Controller
 from robot_model import adjoint
-from markers import iPositionMarker, iPoseMarker, iPlaneMarker, sphere, box, plane, frame
+from markers import iPositionMarker, iPoseMarker, iPlaneMarker, iConeMarker, addMarker, processFeedback, sphere, box, plane, frame
+from interactive_markers.interactive_marker_server import InteractiveMarkerServer
 from geometry_msgs.msg import Vector3
 from tf import transformations as tf
 from visualization_msgs.msg import MarkerArray
@@ -56,23 +57,29 @@ class Gui(QWidget):
     def loop(self):
         rate = rospy.Rate(50)
         c = self.controller
+        ims = InteractiveMarkerServer('controller')
         task = self.task_id
         if task == 0:  # pose task
-            c.addMarker(iPoseMarker(c.T))
+            addMarker(ims, iPoseMarker(c.T), processFeedback(c.setTarget))
         elif task >= 1 and task <= 4:  # move in plane
             markers = [plane()]
             if task != 1:
                 markers.append(sphere())
-            c.addMarker(iPlaneMarker(c.T[0:3, 3], markers=markers))
+            addMarker(ims, iPlaneMarker(c.T[0:3, 3], markers=markers),
+                      processFeedback(c.setTarget))
         elif task >= 5 and task <= 6:  # constrain position to box and orientation to a cone
             tol = 0.5 * numpy.array([0.2, 0.1, 0.05])  # tolerance box
-            c.addMarker(iPositionMarker(c.T[0:3, 3], markers=[sphere(), box(size=Vector3(*(2.*tol)))]))
+            addMarker(ims, iPositionMarker(c.T[0:3, 3],
+                                           markers=[sphere(), box(size=Vector3(*(2.*tol)))]),
+                      processFeedback(c.setTarget))
         if task in [4, 6]:  # constrain orientation to cone
             eef_axis = numpy.array([0, 1, 0])  # y-axis to align with cone axis
             T = c.T
             T[0:3, 3] = numpy.array([-0.25, 0, 0])  # place cone next to the robot
-            # add cone marker aligned with initial eef's y-axis
-            c.addConeMarker(pose=T.dot(tf.rotation_matrix(math.pi/2, [-1, 0, 0])))
+            # add cone marker aligned with current eef's y-axis
+            cm = iConeMarker(ims, T.dot(tf.rotation_matrix(numpy.pi/2, [-1, 0, 0])),
+                             pose_cb=c.setTarget, angle_cb=c.setTarget)
+        ims.applyChanges()
 
         ns_old = numpy.zeros((c.N, 0))
         while not rospy.is_shutdown():
@@ -107,7 +114,7 @@ class Gui(QWidget):
             if task in [4, 6]:  # additionally constrain orientation to cone
                 cone_pose = c.targets['cone_pose']
                 angle = c.targets['cone_angle']
-                tasks.append(c.cone_task(eef_axis, cone_pose[0:3, 2], threshold=math.cos(angle)))
+                tasks.append(c.cone_task(eef_axis, cone_pose[0:3, 2], threshold=numpy.cos(angle)))
 
                 # publish orientation of eef_axis as 2nd cylinder of eef frame
                 T = c.T
