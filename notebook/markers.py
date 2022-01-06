@@ -30,20 +30,27 @@ def plane(size=1.0, color=ColorRGBA(1, 1, 1, 0.5), **kwargs):
     return box(size=Vector3(size, size, 1e-3), color=color, **kwargs)
 
 
-def cone(halfOpenAngle, scale=.1, color=ColorRGBA(1, 0, 1, 0.5), **kwargs):
+def cone(halfOpenAngle, scale=0.1, color=ColorRGBA(1, 0, 1, 0.5), **kwargs):
     twopi = numpy.pi * 2
     height = scale * numpy.cos(halfOpenAngle)
     radius = scale * numpy.sin(halfOpenAngle)
     points = []
     numTriangles = 50
     for i in range(numTriangles):
-        points.append(Vector3(0, 0, 0))
+        points.append(Point(0, 0, 0))
         theta = twopi * i/numTriangles
-        points.append(Vector3(radius * numpy.sin(theta), radius * numpy.cos(theta), height))
+        points.append(Point(radius * numpy.sin(theta), radius * numpy.cos(theta), height))
         theta = twopi * (i+1)/numTriangles
-        points.append(Vector3(radius * numpy.sin(theta), radius * numpy.cos(theta), height))
+        points.append(Point(radius * numpy.sin(theta), radius * numpy.cos(theta), height))
 
-    return Marker(type=Marker.TRIANGLE_LIST, points=points, color=color, **kwargs)
+    return Marker(type=Marker.TRIANGLE_LIST, points=points, color=color, scale=Vector3(1, 1, 1), **kwargs)
+
+
+def arrow(len=0.1, width=None, color=ColorRGBA(1, 0, 0, 1), **kwargs):
+    """Create an arrow marker"""
+    width = width or 0.1*len
+    scale = Vector3(len, width, width)
+    return Marker(type=Marker.ARROW, scale=scale, color=color, **kwargs)
 
 
 def frame(T, scale=0.1, radius=None, frame_id='world', ns='frame'):
