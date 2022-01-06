@@ -2,6 +2,7 @@
 
 import numpy
 import math
+import qpsolvers
 import rospy
 import random
 from std_msgs.msg import Header, ColorRGBA
@@ -152,6 +153,30 @@ class Controller(object):
             N = VN.dot(VN.T)
         self.nullspace = VN  # remember nullspace basis
         return qdot
+
+    def solve_qp(self, equality_tasks, inequality_tasks):
+        """Solve tasks of the form J dq = e  and  J dq ≤ e
+           using quadratic optimization: https://pypi.org/project/qpsolvers"""
+        # Formulate all equality tasks as a quadratic optimization problem min |J dq -e |^2 + lambda + |dq|^2
+        J, e = self.stack(equality_tasks) if equality_tasks else (numpy.identity(self.N), numpy.zeros(self.N))
+        P = 2 * J.T.dot(J) + 1e-3 * numpy.identity(self.N)
+        q = J.T.dot(-2.0 * e)
+        A, b = (None, None)
+        G, h = self.stack(inequality_tasks) if inequality_tasks else (None, None)
+        lb = numpy.maximum(-0.1, self.mins - self.joint_msg.position)
+        ub = numpy.minimum(0.1, self.maxs - self.joint_msg.position)
+        self.nullspace = numpy.zeros((self.N, 0))
+        try:
+            result = qpsolvers.solve_qp(P, q, G, h, A, b, lb, ub)
+            if result is None:
+                print("Failed to find a solution")
+        except ValueError as e:
+            print(e)
+            result = None
+        if result is None:
+            return numpy.zeros(self.N)
+        else:
+            return result
 
     @staticmethod
     def stack(tasks):
