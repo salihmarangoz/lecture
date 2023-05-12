@@ -250,12 +250,12 @@ int main(int argc, char *argv[]) {
 	KDL::ChainIkSolverVel_pinv_nso ik(kdl_chain,kdl_joints,relaxed_posture,0.0001);
 
 	// run controller
-	ros::Rate rate(50); // 50 hz update rate
+	ros::Rate rate(200); // 50 hz update rate
 	while (ros::ok()) {
 		// TODO: compute twist that moves current end-effector pose into target pose
 		tf::poseMsgToKDL(marker_feedback.pose,target);
 		fk.JntToCart(joints, kdl_pose);
-		KDL::Twist twist = 0.1 * KDL::diff(kdl_pose,target);
+		KDL::Twist twist = 1.0 * KDL::diff(kdl_pose,target);
 
 		// TODO: perform inverse velocity kinematics
 		ik.CartToJnt(joints, twist, qDot);
@@ -267,7 +267,7 @@ int main(int argc, char *argv[]) {
 
 		// process ros messages
 		ros::spinOnce();
-		rate.sleep();
+		//rate.sleep();
 	}
 
 	server.reset();

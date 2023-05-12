@@ -8,11 +8,11 @@ import random
 from std_msgs.msg import Header, ColorRGBA
 from sensor_msgs.msg import JointState
 from geometry_msgs.msg import TransformStamped, Transform, Pose, Quaternion, Vector3, Point
-from visualization_msgs.msg import Marker, MarkerArray
+from visualization_msgs.msg import Marker, MarkerArray, InteractiveMarkerFeedback
 from tf import transformations as tf
 from interactive_markers.interactive_marker_server import InteractiveMarkerServer
 from robot_model import RobotModel, Joint
-from markers import addMarker, processFeedback, iPoseMarker, frame
+from markers import addMarker, processFeedback, iPoseMarker, frame, createPose
 
 
 def skew(w):
